@@ -91,6 +91,9 @@ async function doSearch(query, limit = 20) {
   const hits = await Promise.all(
     res.results.slice(0, limit).map((r) => r.data())
   );
+  // pagefind result fields: url, content, word_count, filters, meta,
+  // anchors, weighted_locations, locations, raw_content, raw_url,
+  // excerpt, sub_results
   const results = [];
   for (const h of hits) {
     const url = h.url.startsWith('http') ? h.url : `https://news.smol.ai${h.url}`;
