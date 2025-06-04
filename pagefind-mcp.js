@@ -59,17 +59,24 @@ await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
 
 // Convenience wrapper
 async function doSearch(query, limit = 20) {
-  const res    = await pagefind.search(query);
-  const hits   = await Promise.all(
-    res.results.slice(0, limit).map(r => r.data())
+  let res = await pagefind.search(query);
+  if (res.unfilteredResultCount === 0 && query.includes(" ")) {
+    for (const part of query.split(/\s+/)) {
+      if (!part) continue;
+      res = await pagefind.search(part);
+      if (res.unfilteredResultCount > 0) break;
+    }
+  }
+  const hits = await Promise.all(
+    res.results.slice(0, limit).map((r) => r.data())
   );
   return {
     total: res.unfilteredResultCount,
-    hits: hits.map(h => ({
-      title:   h.meta.title,
-      url:     `https://news.smol.ai${h.url}`,
-      excerpt: h.excerpt
-    }))
+    hits: hits.map((h) => ({
+      title: h.meta.title,
+      url: `https://news.smol.ai${h.url}`,
+      excerpt: h.excerpt,
+    })),
   };
 }
 
