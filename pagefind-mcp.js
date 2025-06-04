@@ -76,6 +76,7 @@ async function doSearch(query, limit = 20) {
       title: h.meta.title,
       url: `https://news.smol.ai${h.url}`,
       excerpt: h.excerpt,
+      content: h.raw_content, // larger snippet text
     })),
   };
 }

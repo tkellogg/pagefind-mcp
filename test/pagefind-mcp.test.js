@@ -37,6 +37,13 @@ test('search queries return textual results', async (t) => {
           expected.test(data.hits[0].excerpt.replace(/<[^>]+>/g, '')),
         `excerpt for ${term} should contain expected text`
       );
+      assert.ok(
+        typeof data.hits[0].content === 'string' && data.hits[0].content.length > 0,
+        `content for ${term} should exist`
+      );
+      // verify returned URL
+      const parsed = new URL(data.hits[0].url);
+      assert.ok(parsed.protocol.startsWith('http'), `url for ${term} should be valid`);
     }
   } finally {
     await client.close();
