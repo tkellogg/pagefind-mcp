@@ -1,0 +1,19 @@
+{
+  "name": "pagefind-mcp",
+  "version": "1.0.0",
+  "description": "An MCP server for searching static sites that are indexed with pagefind",
+  "main": "pagefind-mcp.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "jsdom": "^26.1.0",
+    "pagefind": "^1.3.0",
+    "zod": "^3.25.51"
+  }
+}
