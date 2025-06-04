@@ -7,10 +7,10 @@
 import { tmpdir }         from "os";
 import { join }  from "path";
 import { mkdir, readFile } from "fs/promises";
+import https               from "node:https";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { pathToFileURL } from "url";
 import { JSDOM }          from "jsdom";
-import { execFile }       from "child_process";
-import { promisify }      from "util";
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -22,10 +22,19 @@ import * as pagefindLib   from "pagefind";
 // ------------------------------------------------------------
 const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
 
-const execFileP = promisify(execFile);        // run shell command
-async function fetchViaCurl(url) {            // fetch remote page
-  const { stdout } = await execFileP("curl", ["-sL", url]);
-  return stdout.toString();
+async function fetchPage(url) {               // fetch remote page
+  const agent = process.env.HTTPS_PROXY
+    ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
+    : undefined;
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, { agent }, (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => resolve(data));
+      })
+      .on("error", reject);
+  });
 }
 
 const args = process.argv.slice(2);
@@ -42,7 +51,7 @@ async function buildIndex() {
   const { index } = await pagefindLib.createIndex();
   for (const slug of slugs) {
     const url = `https://news.smol.ai/issues/${slug}`;
-    const html = await fetchViaCurl(url);
+    const html = await fetchPage(url);
     await index.addHTMLFile({ url, content: html, sourcePath: `issues/${slug}.html` });
   }
   await index.writeFiles({ outputPath: CACHE_DIR });
@@ -87,13 +96,13 @@ async function doSearch(query, limit = 20) {
     const url = h.url.startsWith('http') ? h.url : `https://news.smol.ai${h.url}`;
     let content = h.raw_content;
     if (noResources) {
-      const html = await fetchViaCurl(url);
+      const html = await fetchPage(url);
       const dom = new JSDOM(html);
       const text = dom.window.document.body.textContent.trim().replace(/\s+/g, " ");
       const excerptLen = h.excerpt.replace(/<[^>]+>/g, "").length;
       content = text.slice(0, excerptLen);
     } else if (!pushedUrls.has(url)) {
-      const html = await fetchViaCurl(url);
+      const html = await fetchPage(url);
       mcp.resource(url, url, async () => ({
         contents: [{ uri: url, mimeType: "text/html", text: html }],
       }));
@@ -129,7 +138,7 @@ if (!noResources) {
     "page",
     new UriTemplate("https://news.smol.ai/{+path}"),
     async (_uri) => {
-      const html = await fetchViaCurl(_uri);
+      const html = await fetchPage(_uri);
       return { contents: [{ uri: _uri, mimeType: "text/html", text: html }] };
     }
   );
