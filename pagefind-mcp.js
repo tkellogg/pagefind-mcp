@@ -83,7 +83,7 @@ const mcp = new McpServer({
 
 mcp.tool(
   "search_smol_news",
-  z.object({ query: z.string(), limit: z.number().optional() }),
+  { query: z.string(), limit: z.number().optional() },
   async ({ query, limit }) => ({
     structuredContent: await doSearch(query, limit ?? 20)
   })
