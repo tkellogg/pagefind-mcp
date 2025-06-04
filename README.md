@@ -7,5 +7,5 @@ An MCP server for searching static sites that are indexed with pagefind
 npx pagefind-mcp [--no-resources]
 ```
 
-The `--no-resources` flag skips pushing full page resources and instead returns
-short text content for each search hit.
+The `--no-resources` flag skips pushing full page resources and instead
+fetches each result page to provide a short, markup-free snippet.

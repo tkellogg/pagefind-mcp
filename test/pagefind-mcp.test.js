@@ -8,7 +8,8 @@ async function startClient(args = []) {
   const transport = new StdioClientTransport({
     command: 'node',
     args: [resolve('pagefind-mcp.js'), ...args],
-    stderr: 'pipe'
+    stderr: 'pipe',
+    env: process.env
   });
   const client = new Client({ name: 'test-client', version: '0.0.0' });
   await client.connect(transport);
@@ -16,9 +17,8 @@ async function startClient(args = []) {
 }
 
 const queries = [
-  { term: 'openai', expected: /OpenAI launches new GPT model/i },
-  { term: 'anthropic', expected: /Anthropic releases Claude 3/i },
-  { term: 'machine learning', expected: /Machine Learning breakthrough/i }
+  { term: 'Mary Meeker', expected: /Mary Meeker/i },
+  { term: 'AI Trends', expected: /AI/i }
 ];
 
 test('search queries return textual results', async (t) => {
@@ -56,7 +56,7 @@ test('resources can be retrieved after search', async (t) => {
   try {
     const result = await client.callTool({
       name: 'search_smol_news',
-      arguments: { query: 'openai', limit: 1 }
+      arguments: { query: 'Mary Meeker', limit: 1 }
     });
     const hit = result.structuredContent.hits[0];
     const resource = await client.readResource({ uri: hit.url });
@@ -64,7 +64,7 @@ test('resources can be retrieved after search', async (t) => {
     const item = resource.contents[0];
     assert.equal(item.uri, hit.url, 'resource uri should match');
     assert.equal(item.mimeType, 'text/html');
-    assert.ok(item.text.includes('OpenAI'), 'resource text should contain article');
+    assert.ok(item.text.includes('Mary Meeker'), 'resource text should contain article');
   } finally {
     await client.close();
     await transport.close();
@@ -76,7 +76,7 @@ test('--no-resources disables resource access', async (t) => {
   try {
     const result = await client.callTool({
       name: 'search_smol_news',
-      arguments: { query: 'openai', limit: 1 }
+      arguments: { query: 'Mary Meeker', limit: 1 }
     });
     const hit = result.structuredContent.hits[0];
     await assert.rejects(

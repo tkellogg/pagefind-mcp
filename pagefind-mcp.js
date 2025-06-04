@@ -5,10 +5,12 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { join, dirname }  from "path";
-import { mkdir, writeFile, readFile } from "fs/promises";
+import { join }  from "path";
+import { mkdir, readFile } from "fs/promises";
 import { pathToFileURL } from "url";
 import { JSDOM }          from "jsdom";
+import { execFile }       from "child_process";
+import { promisify }      from "util";
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -19,27 +21,30 @@ import * as pagefindLib   from "pagefind";
 // 1.  Build a tiny Pagefind index at start-up
 // ------------------------------------------------------------
 const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
-const SAMPLE_DIR = join(tmpdir(), "smol_ai_sample");
+
+const execFileP = promisify(execFile);        // run shell command
+async function fetchViaCurl(url) {            // fetch remote page
+  const { stdout } = await execFileP("curl", ["-sL", url]);
+  return stdout.toString();
+}
 
 const args = process.argv.slice(2);
-const noResources = args.includes("--no-resources");
+const noResources = args.includes("--no-resources");   // skip resource push
 
 async function buildIndex() {
   await mkdir(CACHE_DIR, { recursive: true });
-  await mkdir(SAMPLE_DIR, { recursive: true });
-
-  const pages = [
-    { file: "index.html", title: "OpenAI launches new GPT model", body: "OpenAI's latest model improves reasoning and efficiency." },
-    { file: "anthropic.html", title: "Anthropic releases Claude 3", body: "Anthropic's Claude 3 sets new benchmarks in alignment." },
-    { file: "research.html", title: "Machine Learning breakthrough", body: "Researchers propose a new transformer variant." }
+  const slugs = [                        // issue pages to index
+    "25-06-03-not-much",
+    "25-06-02-not-much",
+    "25-05-30-mary-meeker",
   ];
 
-  await Promise.all(pages.map(p =>
-    writeFile(join(SAMPLE_DIR, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
-  ));
-
   const { index } = await pagefindLib.createIndex();
-  await index.addDirectory({ path: SAMPLE_DIR });
+  for (const slug of slugs) {
+    const url = `https://news.smol.ai/issues/${slug}`;
+    const html = await fetchViaCurl(url);
+    await index.addHTMLFile({ url, content: html, sourcePath: `issues/${slug}.html` });
+  }
   await index.writeFiles({ outputPath: CACHE_DIR });
 }
 await buildIndex();
@@ -62,7 +67,7 @@ global.fetch    = async (url) => {
 const pagefind = await import(pathToFileURL(join(CACHE_DIR, "pagefind.js")).href);
 await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
 
-const pushedUrls = new Set();
+const pushedUrls = new Set();           // cache resource urls
 
 // Convenience wrapper
 async function doSearch(query, limit = 20) {
@@ -79,18 +84,16 @@ async function doSearch(query, limit = 20) {
   );
   const results = [];
   for (const h of hits) {
-    const url = `https://news.smol.ai${h.url}`;
+    const url = h.url.startsWith('http') ? h.url : `https://news.smol.ai${h.url}`;
     let content = h.raw_content;
     if (noResources) {
-      const file = h.url === "/" ? "index.html" : h.url.replace(/^\//, "");
-      const html = await readFile(join(SAMPLE_DIR, file), "utf8");
+      const html = await fetchViaCurl(url);
       const dom = new JSDOM(html);
       const text = dom.window.document.body.textContent.trim().replace(/\s+/g, " ");
       const excerptLen = h.excerpt.replace(/<[^>]+>/g, "").length;
       content = text.slice(0, excerptLen);
     } else if (!pushedUrls.has(url)) {
-      const file = h.url === "/" ? "index.html" : h.url.replace(/^\//, "");
-      const html = await readFile(join(SAMPLE_DIR, file), "utf8");
+      const html = await fetchViaCurl(url);
       mcp.resource(url, url, async () => ({
         contents: [{ uri: url, mimeType: "text/html", text: html }],
       }));
@@ -125,9 +128,8 @@ if (!noResources) {
   mcp.resource(
     "page",
     new UriTemplate("https://news.smol.ai/{+path}"),
-    async (_uri, vars) => {
-      const file = vars.path === "" ? "index.html" : vars.path.replace(/^\//, "");
-      const html = await readFile(join(SAMPLE_DIR, file), "utf8");
+    async (_uri) => {
+      const html = await fetchViaCurl(_uri);
       return { contents: [{ uri: _uri, mimeType: "text/html", text: html }] };
     }
   );
