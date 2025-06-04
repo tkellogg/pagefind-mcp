@@ -92,7 +92,7 @@ async function doSearch(query, limit = 20) {
       const file = h.url === "/" ? "index.html" : h.url.replace(/^\//, "");
       const html = await readFile(join(SAMPLE_DIR, file), "utf8");
       mcp.resource(url, url, async () => ({
-        contents: [{ mimeType: "text/html", text: html }],
+        contents: [{ uri: url, mimeType: "text/html", text: html }],
       }));
       pushedUrls.add(url);
     }
@@ -128,7 +128,7 @@ if (!noResources) {
     async (_uri, vars) => {
       const file = vars.path === "" ? "index.html" : vars.path.replace(/^\//, "");
       const html = await readFile(join(SAMPLE_DIR, file), "utf8");
-      return { contents: [{ mimeType: "text/html", text: html }] };
+      return { contents: [{ uri: _uri, mimeType: "text/html", text: html }] };
     }
   );
 }
