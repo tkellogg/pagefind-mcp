@@ -1,52 +1,61 @@
 #!/usr/bin/env node
 // smol-news-mcp.js  ✧  MIT-licensed example
 // ------------------------------------------------------------
-// Usage:  node smol-news-mcp.js [PORT]
+// Usage:  node smol-news-mcp.js
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
-import { createServer }   from "http";
 import { tmpdir }         from "os";
 import { join, dirname }  from "path";
 import { mkdir, writeFile, readFile } from "fs/promises";
-import { fileURLToPath, pathToFileURL } from "url";
-import fetch              from "node-fetch";
+import { pathToFileURL } from "url";
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
-import { HttpServerTransport } from "@modelcontextprotocol/sdk/server/http.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import * as pagefindLib   from "pagefind";
 
 // ------------------------------------------------------------
-// 1.  Grab the Pagefind bundle on start-up
+// 1.  Build a tiny Pagefind index at start-up
 // ------------------------------------------------------------
-const BASE      = "https://news.smol.ai/pagefind";
 const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
 
-async function download(pathOnSite) {
-  const url  = `${BASE}/${pathOnSite}`;
-  const dest = join(CACHE_DIR, pathOnSite);
-  await mkdir(dirname(dest), { recursive: true });
-  const buf  = await (await fetch(url)).arrayBuffer();
-  await writeFile(dest, Buffer.from(buf));
-}
-
-async function syncPagefind() {
+async function buildIndex() {
   await mkdir(CACHE_DIR, { recursive: true });
+  const sampleDir = join(tmpdir(), "smol_ai_sample");
+  await mkdir(sampleDir, { recursive: true });
 
-  // Core engine assets
-  await Promise.all(["pagefind.js", "pagefind.wasm"].map(download));
+  const pages = [
+    { file: "index.html", title: "OpenAI launches new GPT model", body: "OpenAI's latest model improves reasoning and efficiency." },
+    { file: "anthropic.html", title: "Anthropic releases Claude 3", body: "Anthropic's Claude 3 sets new benchmarks in alignment." },
+    { file: "research.html", title: "Machine Learning breakthrough", body: "Researchers propose a new transformer variant." }
+  ];
 
-  // Manifest lists every chunk we must mirror
-  const manifestJson = await (await fetch(`${BASE}/manifest.json`)).json();
-  await download("manifest.json");
-  const chunks = manifestJson.chunks || manifestJson.files || [];
-  await Promise.all(chunks.map(download));
+  await Promise.all(pages.map(p =>
+    writeFile(join(sampleDir, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
+  ));
+
+  const { index } = await pagefindLib.createIndex();
+  await index.addDirectory({ path: sampleDir });
+  await index.writeFiles({ outputPath: CACHE_DIR });
 }
-await syncPagefind();
+await buildIndex();
+
+// Polyfill minimal browser globals for Pagefind
+global.window   = global;
+global.document = { currentScript: { src: pathToFileURL(join(CACHE_DIR, "pagefind.js")).href } };
+global.location = { href: global.document.currentScript.src };
+global.fetch    = async (url) => {
+  const buf = await readFile(new URL(url));
+  return {
+    arrayBuffer: async () => buf,
+    json: async () => JSON.parse(buf.toString("utf8"))
+  };
+};
 
 // ------------------------------------------------------------
 // 2.  In-process Pagefind engine
 // ------------------------------------------------------------
 const pagefind = await import(pathToFileURL(join(CACHE_DIR, "pagefind.js")).href);
-await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks  :contentReference[oaicite:1]{index=1}
+await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
 
 // Convenience wrapper
 async function doSearch(query, limit = 20) {
@@ -55,7 +64,7 @@ async function doSearch(query, limit = 20) {
     res.results.slice(0, limit).map(r => r.data())
   );
   return {
-    total: res.count,
+    total: res.unfilteredResultCount,
     hits: hits.map(h => ({
       title:   h.meta.title,
       url:     `https://news.smol.ai${h.url}`,
@@ -76,24 +85,14 @@ mcp.tool(
   "search_smol_news",
   z.object({ query: z.string(), limit: z.number().optional() }),
   async ({ query, limit }) => ({
-    content: [{
-      type: "json",
-      value: await doSearch(query, limit ?? 20)
-    }]
+    structuredContent: await doSearch(query, limit ?? 20)
   })
 );
 
 // ------------------------------------------------------------
-// 4.  Tiny HTTP transport (also serves Pagefind static files)
+// 4.  Tiny stdio transport
 // ------------------------------------------------------------
-const listenPort = Number(process.argv[2] || 8848);
-const transport  = new HttpServerTransport({
-  port: listenPort,
-  // Static handler for /pagefind/** so Pagefind can lazy-load shards if needed
-  static: {
-    "/pagefind": CACHE_DIR
-  }
-});
+const transport = new StdioServerTransport();
 
 await mcp.connect(transport);
-console.log(`✓ MCP server “smol-ai-news” ready on http://localhost:${listenPort}`);
+console.log("✓ MCP server ‘smol-ai-news’ ready on stdio");
