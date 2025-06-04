@@ -15,19 +15,28 @@ async function startClient() {
   return { transport, client };
 }
 
-const queries = ['openai', 'anthropic', 'machine learning'];
+const queries = [
+  { term: 'openai', expected: /OpenAI launches new GPT model/i },
+  { term: 'anthropic', expected: /Anthropic releases Claude 3/i },
+  { term: 'machine learning', expected: /Machine Learning breakthrough/i }
+];
 
-test('search queries return results', async (t) => {
+test('search queries return textual results', async (t) => {
   const { transport, client } = await startClient();
   try {
-    for (const query of queries) {
+    for (const { term, expected } of queries) {
       const result = await client.callTool({
         name: 'search_smol_news',
-        arguments: { query, limit: 3 }
+        arguments: { query: term, limit: 3 }
       });
       const data = result.structuredContent;
-      assert.ok(data.total >= 0, 'expected total to be non-negative');
-      assert.ok(Array.isArray(data.hits), 'hits should be an array');
+      assert.ok(data.total > 0, `expected total to be positive for ${term}`);
+      assert.ok(Array.isArray(data.hits) && data.hits.length > 0, `expected hits for ${term}`);
+      assert.ok(
+        typeof data.hits[0].excerpt === 'string' &&
+          expected.test(data.hits[0].excerpt.replace(/<[^>]+>/g, '')),
+        `excerpt for ${term} should contain expected text`
+      );
     }
   } finally {
     await client.close();
