@@ -4,11 +4,12 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { resolve } from 'path';
 
-async function startClient(extraArgs = []) {
+async function startClient(args = []) {
   const transport = new StdioClientTransport({
     command: 'node',
-    args: [resolve('pagefind-mcp.js'), ...extraArgs],
-    stderr: 'pipe'
+    args: [resolve('pagefind-mcp.js'), ...args],
+    stderr: 'pipe',
+    env: process.env
   });
   const client = new Client({ name: 'test-client', version: '0.0.0' });
   await client.connect(transport);
@@ -16,9 +17,8 @@ async function startClient(extraArgs = []) {
 }
 
 const queries = [
-  { term: 'openai', expected: /OpenAI launches new GPT model/i },
-  { term: 'anthropic', expected: /Anthropic releases Claude 3/i },
-  { term: 'machine learning', expected: /Machine Learning breakthrough/i }
+  { term: 'Mary Meeker', expected: /Mary Meeker/i },
+  { term: 'AI Trends', expected: /AI/i }
 ];
 
 test('search queries return textual results', async (t) => {
@@ -59,6 +59,45 @@ test('CLI tool-name override works', async (t) => {
       arguments: { query: 'openai', limit: 1 }
     });
     assert.ok(res.structuredContent.total > 0, 'override should search');
+  } finally {
+    await client.close();
+    await transport.close();
+  }
+});
+
+test('resources can be retrieved after search', async (t) => {
+  const { transport, client } = await startClient();
+  try {
+    const result = await client.callTool({
+      name: 'search_smol_news',
+      arguments: { query: 'Mary Meeker', limit: 1 }
+    });
+    const hit = result.structuredContent.hits[0];
+    const resource = await client.readResource({ uri: hit.url });
+    assert.ok(Array.isArray(resource.contents) && resource.contents.length > 0, 'resource should have contents');
+    const item = resource.contents[0];
+    assert.equal(item.uri, hit.url, 'resource uri should match');
+    assert.equal(item.mimeType, 'text/html');
+    assert.ok(item.text.includes('Mary Meeker'), 'resource text should contain article');
+  } finally {
+    await client.close();
+    await transport.close();
+  }
+});
+
+test('--no-resources disables resource access', async (t) => {
+  const { transport, client } = await startClient(['--no-resources']);
+  try {
+    const result = await client.callTool({
+      name: 'search_smol_news',
+      arguments: { query: 'Mary Meeker', limit: 1 }
+    });
+    const hit = result.structuredContent.hits[0];
+    await assert.rejects(
+      client.readResource({ uri: hit.url }),
+      /-32601/,
+      'readResource should fail when no resources'
+    );
   } finally {
     await client.close();
     await transport.close();
