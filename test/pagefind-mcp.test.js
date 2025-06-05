@@ -4,10 +4,12 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { resolve } from 'path';
 
+const HOST = 'https://news.smol.ai';
+
 async function startClient(args = []) {
   const transport = new StdioClientTransport({
     command: 'node',
-    args: [resolve('pagefind-mcp.js'), ...args],
+    args: [resolve('pagefind-mcp.js'), '--host', HOST, ...args],
     stderr: 'pipe',
     env: process.env
   });

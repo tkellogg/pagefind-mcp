@@ -8,6 +8,7 @@ import { tmpdir }         from "os";
 import { join }  from "path";
 import { mkdir, readFile } from "fs/promises";
 import https               from "node:https";
+import http                from "node:http";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { pathToFileURL } from "url";
 import { JSDOM }          from "jsdom";
@@ -23,12 +24,14 @@ import * as pagefindLib   from "pagefind";
 const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
 
 async function fetchPage(url) {               // fetch remote page
+  const parsed = new URL(url);
   const agent = process.env.HTTPS_PROXY
     ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
     : undefined;
+  const lib = parsed.protocol === "http:" ? http : https;
   return new Promise((resolve, reject) => {
-    https
-      .get(url, { agent }, (res) => {
+    lib
+      .get(parsed, { agent }, (res) => {
         let data = "";
         res.on("data", (c) => (data += c));
         res.on("end", () => resolve(data));
@@ -38,6 +41,30 @@ async function fetchPage(url) {               // fetch remote page
 }
 
 const args = process.argv.slice(2);
+let hostVal = null;                   // extract --host argument
+for (let i = 0; i < args.length; i++) {
+  if (args[i].startsWith("--host=")) {
+    hostVal = args[i].split("=")[1];
+    break;
+  }
+  if (args[i] === "--host" && args[i + 1]) {
+    hostVal = args[i + 1];
+    break;
+  }
+}
+if (!hostVal) {
+  console.error("Error: --host <url> required");
+  process.exit(1);
+}
+if (!/^https?:\/\//.test(hostVal)) hostVal = `https://${hostVal}`; // default scheme
+let hostUrl;
+try {
+  hostUrl = new URL(hostVal);         // validate url format
+} catch {
+  console.error("Error: invalid --host value");
+  process.exit(1);
+}
+const HOST = hostUrl.href.replace(/\/$/, "");   // normalized base url
 const noResources = args.includes("--no-resources");   // skip resource push
 
 async function buildIndex() {
@@ -50,7 +77,7 @@ async function buildIndex() {
 
   const { index } = await pagefindLib.createIndex();
   for (const slug of slugs) {
-    const url = `https://news.smol.ai/issues/${slug}`;
+    const url = `${HOST}/issues/${slug}`;
     const html = await fetchPage(url);
     await index.addHTMLFile({ url, content: html, sourcePath: `issues/${slug}.html` });
   }
@@ -96,7 +123,7 @@ async function doSearch(query, limit = 20) {
   // excerpt, sub_results
   const results = [];
   for (const h of hits) {
-    const url = h.url.startsWith('http') ? h.url : `https://news.smol.ai${h.url}`;
+    const url = h.url.startsWith('http') ? h.url : `${HOST}${h.url}`;
     let content = h.raw_content;
     if (noResources) {
       const html = await fetchPage(url);
@@ -139,7 +166,7 @@ mcp.tool(
 if (!noResources) {
   mcp.resource(
     "page",
-    new UriTemplate("https://news.smol.ai/{+path}"),
+    new UriTemplate(`${HOST}/{+path}`),
     async (_uri) => {
       const html = await fetchPage(_uri);
       return { contents: [{ uri: _uri, mimeType: "text/html", text: html }] };
