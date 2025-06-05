@@ -15,8 +15,18 @@ import * as pagefindLib   from "pagefind";
 
 // CLI switch for tool name
 const args = process.argv.slice(2);
-const nameIdx = args.indexOf('--tool-name');
-const TOOL_NAME = nameIdx !== -1 && args[nameIdx + 1] ? args[nameIdx + 1] : 'search_pagefind';
+let TOOL_NAME = 'search_pagefind';
+for (const arg of args) {
+  if (arg === '--tool-name') {
+    const pos = args.indexOf(arg);
+    if (args[pos + 1]) TOOL_NAME = args[pos + 1];
+    break;
+  }
+  if (arg.startsWith('--tool-name=')) {
+    TOOL_NAME = arg.split('=')[1];
+    break;
+  }
+}
 
 // ------------------------------------------------------------
 // 1.  Build a tiny Pagefind index at start-up

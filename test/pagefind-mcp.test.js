@@ -4,10 +4,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { resolve } from 'path';
 
-async function startClient() {
+async function startClient(extraArgs = []) {
   const transport = new StdioClientTransport({
     command: 'node',
-    args: [resolve('pagefind-mcp.js')],
+    args: [resolve('pagefind-mcp.js'), ...extraArgs],
     stderr: 'pipe'
   });
   const client = new Client({ name: 'test-client', version: '0.0.0' });
@@ -45,6 +45,20 @@ test('search queries return textual results', async (t) => {
       const parsed = new URL(data.hits[0].url);
       assert.ok(parsed.protocol.startsWith('http'), `url for ${term} should be valid`);
     }
+  } finally {
+    await client.close();
+    await transport.close();
+  }
+});
+
+test('CLI tool-name override works', async (t) => {
+  const { transport, client } = await startClient(['--tool-name=custom_tool']);
+  try {
+    const res = await client.callTool({
+      name: 'custom_tool',
+      arguments: { query: 'openai', limit: 1 }
+    });
+    assert.ok(res.structuredContent.total > 0, 'override should search');
   } finally {
     await client.close();
     await transport.close();
