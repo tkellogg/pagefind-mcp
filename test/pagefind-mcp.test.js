@@ -26,7 +26,7 @@ test('search queries return textual results', async (t) => {
   try {
     for (const { term, expected } of queries) {
       const result = await client.callTool({
-        name: 'search_smol_news',
+        name: 'search_pagefind',
         arguments: { query: term, limit: 3 }
       });
       const data = result.structuredContent;
@@ -45,6 +45,20 @@ test('search queries return textual results', async (t) => {
       const parsed = new URL(data.hits[0].url);
       assert.ok(parsed.protocol.startsWith('http'), `url for ${term} should be valid`);
     }
+  } finally {
+    await client.close();
+    await transport.close();
+  }
+});
+
+test('CLI tool-name override works', async (t) => {
+  const { transport, client } = await startClient(['--tool-name=custom_tool']);
+  try {
+    const res = await client.callTool({
+      name: 'custom_tool',
+      arguments: { query: 'openai', limit: 1 }
+    });
+    assert.ok(res.structuredContent.total > 0, 'override should search');
   } finally {
     await client.close();
     await transport.close();

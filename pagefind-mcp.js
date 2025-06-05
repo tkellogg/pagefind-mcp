@@ -5,17 +5,32 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { join }  from "path";
-import { mkdir, readFile } from "fs/promises";
-import https               from "node:https";
-import { HttpsProxyAgent } from "https-proxy-agent";
-import { pathToFileURL } from "url";
-import { JSDOM }          from "jsdom";
-import z                  from "zod";
-import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { UriTemplate }   from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
-import * as pagefindLib   from "pagefind";
+// Collect CLI tool name
+function parseToolName() {
+  const argv = process.argv.slice(2);
+  let tool = "search_pagefind";
+  for (const a of argv) {
+    if (a === "--tool-name") {
+      const pos = argv.indexOf(a);
+      tool = argv[pos + 1] ?? tool;
+    }
+    if (a.startsWith("--tool-name=")) tool = a.split("=")[1];
+  return tool;
+const TOOL_NAME = parseToolName();
+// CLI switch for tool name
+const args = process.argv.slice(2);
+let TOOL_NAME = 'search_pagefind';
+for (const arg of args) {
+  if (arg === '--tool-name') {
+    const pos = args.indexOf(arg);
+    if (args[pos + 1]) TOOL_NAME = args[pos + 1];
+    break;
+  }
+  if (arg.startsWith('--tool-name=')) {
+    TOOL_NAME = arg.split('=')[1];
+    break;
+  }
+}
 
 // ------------------------------------------------------------
 // 1.  Build a tiny Pagefind index at start-up
@@ -128,7 +143,7 @@ const mcp = new McpServer({
 });
 
 mcp.tool(
-  "search_smol_news",
+  TOOL_NAME,
   { query: z.string(), limit: z.number().optional() },
   async ({ query, limit }) => ({
     structuredContent: await doSearch(query, limit ?? 20)
