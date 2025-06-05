@@ -6,15 +6,15 @@
 
 import { tmpdir }         from "os";
 import { McpServer, ResourceTemplate }      from "@modelcontextprotocol/sdk/server/mcp.js";
-const CACHE_DIR  = join(tmpdir(), "smol_ai_pagefind");
+// Build sample search index
 const SAMPLE_DIR = join(tmpdir(), "smol_ai_sample");
   await mkdir(SAMPLE_DIR, { recursive: true });
     writeFile(join(SAMPLE_DIR, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
   await index.addDirectory({ path: SAMPLE_DIR });
-      resource: {
-        uri: `news://${h.url === '/' ? 'index.html' : h.url.slice(1)}`
-      },
-// Serve article content
+// Pagefind browser shims
+// In-process Pagefind engine
+// Simplified search wrapper
+// Minimal MCP facade
 mcp.resource(
   "news-article",
   new ResourceTemplate("news://{file}", { list: undefined }),
