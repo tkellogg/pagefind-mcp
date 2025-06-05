@@ -5,12 +5,30 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { join }  from "path";
-import { mkdir, readFile } from "fs/promises";
-import https               from "node:https";
-import { HttpsProxyAgent } from "https-proxy-agent";
-import { pathToFileURL } from "url";
-import { JSDOM }          from "jsdom";
+import { mkdir, writeFile, readFile, access } from "fs/promises";
+// Build sample search index
+const SAMPLE_DIR = join(tmpdir(), "smol_ai_sample");
+  await mkdir(SAMPLE_DIR, { recursive: true });
+  try {
+    await access(join(CACHE_DIR, 'pagefind.js'));
+    return;
+  } catch {}
+
+    writeFile(join(SAMPLE_DIR, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
+  await index.addDirectory({ path: SAMPLE_DIR });
+// Pagefind browser shims
+// In-process Pagefind engine
+// Simplified search wrapper
+// Minimal MCP facade
+mcp.resource(
+  "news-article",
+  new ResourceTemplate("news://{file}", { list: undefined }),
+  async (_uri, { file }) => {
+    const html = await readFile(join(SAMPLE_DIR, file), "utf8");
+    return { contents: [{ uri: _uri.href, text: stripHtml(html) }] };
+  }
+);
+
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -76,6 +94,11 @@ global.fetch    = async (url) => {
 const pagefind = await import(pathToFileURL(join(CACHE_DIR, "pagefind.js")).href);
 await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
 
+// Convert HTML to text
+function stripHtml(html) {
+  return new JSDOM(html).window.document.body.textContent || "";
+}
+
 const pushedUrls = new Set();           // cache resource urls
 
 // Convenience wrapper
@@ -115,7 +138,12 @@ async function doSearch(query, limit = 20) {
   }
   return {
     total: res.unfilteredResultCount,
-    hits: results,
+    hits: hits.map((h) => ({
+      title: h.meta.title,
+      url: `https://news.smol.ai${h.url}`,
+      excerpt: stripHtml(h.excerpt),
+      content: stripHtml(h.raw_content), // larger snippet text
+    })),
   };
 }
 

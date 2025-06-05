@@ -18,6 +18,15 @@ async function startClient(args = []) {
 
 const queries = [
   { term: 'Mary Meeker', expected: /Mary Meeker/i },
+      const resource = await client.readResource({ uri: data.hits[0].resource.uri });
+      assert.ok(
+        Array.isArray(resource.contents) && resource.contents.length > 0,
+        `resource for ${term} should return contents`
+      );
+      assert.ok(
+        !/[<>]/.test(resource.contents[0].text),
+        `resource for ${term} should be plain text`
+      );
   { term: 'AI Trends', expected: /AI/i }
 ];
 
@@ -34,13 +43,15 @@ test('search queries return textual results', async (t) => {
       assert.ok(Array.isArray(data.hits) && data.hits.length > 0, `expected hits for ${term}`);
       assert.ok(
         typeof data.hits[0].excerpt === 'string' &&
-          expected.test(data.hits[0].excerpt.replace(/<[^>]+>/g, '')),
+          expected.test(data.hits[0].excerpt),
         `excerpt for ${term} should contain expected text`
       );
+      assert.ok(!/[<>]/.test(data.hits[0].excerpt), `excerpt for ${term} should be plain text`);
       assert.ok(
         typeof data.hits[0].content === 'string' && data.hits[0].content.length > 0,
         `content for ${term} should exist`
       );
+      assert.ok(!/[<>]/.test(data.hits[0].content), `content for ${term} should be plain text`);
       // verify returned URL
       const parsed = new URL(data.hits[0].url);
       assert.ok(parsed.protocol.startsWith('http'), `url for ${term} should be valid`);
