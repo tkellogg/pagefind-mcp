@@ -38,6 +38,17 @@ async function fetchPage(url) {               // fetch remote page
 }
 
 const args = process.argv.slice(2);
+const hostArg = args.find((a, i) => a.startsWith("--host=") || a === "--host" && args[i + 1]); // parse required host
+const hostVal = hostArg
+  ? hostArg.includes("=")
+    ? hostArg.split("=")[1]
+    : args[args.indexOf("--host") + 1]
+  : null;
+if (!hostVal) {
+  console.error("Error: --host <url> required");
+  process.exit(1);
+}
+const HOST = hostVal.replace(/\/$/, "");   // base site url
 const noResources = args.includes("--no-resources");   // skip resource push
 
 async function buildIndex() {
@@ -50,7 +61,7 @@ async function buildIndex() {
 
   const { index } = await pagefindLib.createIndex();
   for (const slug of slugs) {
-    const url = `https://news.smol.ai/issues/${slug}`;
+    const url = `${HOST}/issues/${slug}`;
     const html = await fetchPage(url);
     await index.addHTMLFile({ url, content: html, sourcePath: `issues/${slug}.html` });
   }
@@ -96,7 +107,7 @@ async function doSearch(query, limit = 20) {
   // excerpt, sub_results
   const results = [];
   for (const h of hits) {
-    const url = h.url.startsWith('http') ? h.url : `https://news.smol.ai${h.url}`;
+    const url = h.url.startsWith('http') ? h.url : `${HOST}${h.url}`;
     let content = h.raw_content;
     if (noResources) {
       const html = await fetchPage(url);
@@ -139,7 +150,7 @@ mcp.tool(
 if (!noResources) {
   mcp.resource(
     "page",
-    new UriTemplate("https://news.smol.ai/{+path}"),
+    new UriTemplate(`${HOST}/{+path}`),
     async (_uri) => {
       const html = await fetchPage(_uri);
       return { contents: [{ uri: _uri, mimeType: "text/html", text: html }] };
