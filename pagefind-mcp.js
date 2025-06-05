@@ -13,6 +13,11 @@ import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as pagefindLib   from "pagefind";
 
+// CLI switch for tool name
+const args = process.argv.slice(2);
+const nameIdx = args.indexOf('--tool-name');
+const TOOL_NAME = nameIdx !== -1 && args[nameIdx + 1] ? args[nameIdx + 1] : 'search_pagefind';
+
 // ------------------------------------------------------------
 // 1.  Build a tiny Pagefind index at start-up
 // ------------------------------------------------------------
@@ -90,7 +95,7 @@ const mcp = new McpServer({
 });
 
 mcp.tool(
-  "search_smol_news",
+  TOOL_NAME,
   { query: z.string(), limit: z.number().optional() },
   async ({ query, limit }) => ({
     structuredContent: await doSearch(query, limit ?? 20)

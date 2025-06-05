@@ -26,7 +26,7 @@ test('search queries return textual results', async (t) => {
   try {
     for (const { term, expected } of queries) {
       const result = await client.callTool({
-        name: 'search_smol_news',
+        name: 'search_pagefind',
         arguments: { query: term, limit: 3 }
       });
       const data = result.structuredContent;
