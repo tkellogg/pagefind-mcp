@@ -5,12 +5,25 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { join }  from "path";
-import { mkdir, readFile } from "fs/promises";
-import https               from "node:https";
-import { HttpsProxyAgent } from "https-proxy-agent";
-import { pathToFileURL } from "url";
-import { JSDOM }          from "jsdom";
+import { McpServer, ResourceTemplate }      from "@modelcontextprotocol/sdk/server/mcp.js";
+const CACHE_DIR  = join(tmpdir(), "smol_ai_pagefind");
+const SAMPLE_DIR = join(tmpdir(), "smol_ai_sample");
+  await mkdir(SAMPLE_DIR, { recursive: true });
+    writeFile(join(SAMPLE_DIR, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
+  await index.addDirectory({ path: SAMPLE_DIR });
+      resource: {
+        uri: `news://${h.url === '/' ? 'index.html' : h.url.slice(1)}`
+      },
+// Serve article content
+mcp.resource(
+  "news-article",
+  new ResourceTemplate("news://{file}", { list: undefined }),
+  async (_uri, { file }) => {
+    const html = await readFile(join(SAMPLE_DIR, file), "utf8");
+    return { contents: [{ uri: _uri.href, text: stripHtml(html) }] };
+  }
+);
+
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";

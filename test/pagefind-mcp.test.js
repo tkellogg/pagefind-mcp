@@ -18,6 +18,15 @@ async function startClient(args = []) {
 
 const queries = [
   { term: 'Mary Meeker', expected: /Mary Meeker/i },
+      const resource = await client.readResource({ uri: data.hits[0].resource.uri });
+      assert.ok(
+        Array.isArray(resource.contents) && resource.contents.length > 0,
+        `resource for ${term} should return contents`
+      );
+      assert.ok(
+        !/[<>]/.test(resource.contents[0].text),
+        `resource for ${term} should be plain text`
+      );
   { term: 'AI Trends', expected: /AI/i }
 ];
 
