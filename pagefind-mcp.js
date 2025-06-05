@@ -4,74 +4,81 @@
 // Usage:  node smol-news-mcp.js
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
-import { tmpdir }         from "os";
-import { mkdir, writeFile, readFile, access } from "fs/promises";
-// Build sample search index
-const SAMPLE_DIR = join(tmpdir(), "smol_ai_sample");
-  await mkdir(SAMPLE_DIR, { recursive: true });
-  try {
-    await access(join(CACHE_DIR, 'pagefind.js'));
-    return;
+import { tmpdir }               from "os";
+import { join, dirname }        from "path";
+import { pathToFileURL }        from "url";
+import { JSDOM }                from "jsdom";
+import z                        from "zod";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import * as pagefindLib         from "pagefind";
+
+// Convert HTML to text
+function stripHtml(html) {
+  return new JSDOM(html).window.document.body.textContent || "";
+}
+    await access(join(CACHE_DIR, "pagefind.js"));
   } catch {}
 
     writeFile(join(SAMPLE_DIR, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
   await index.addDirectory({ path: SAMPLE_DIR });
-// Pagefind browser shims
-// In-process Pagefind engine
-// Simplified search wrapper
-// Minimal MCP facade
-mcp.resource(
-  "news-article",
-  new ResourceTemplate("news://{file}", { list: undefined }),
-  async (_uri, { file }) => {
-    const html = await readFile(join(SAMPLE_DIR, file), "utf8");
-    return { contents: [{ uri: _uri.href, text: stripHtml(html) }] };
+async function main() {
+  await buildIndex();
+
+  // Pagefind browser shims
+  global.window   = global;
+  global.document = { currentScript: { src: pathToFileURL(join(CACHE_DIR, "pagefind.js")).href } };
+  global.location = { href: global.document.currentScript.src };
+  global.fetch    = async (url) => {
+    const buf = await readFile(new URL(url));
+    return {
+      arrayBuffer: async () => buf,
+      json: async () => JSON.parse(buf.toString("utf8"))
+    };
+
+  // ------------------------------------------------------------
+  // In-process Pagefind engine
+  // ------------------------------------------------------------
+  const pagefind = await import(pathToFileURL(join(CACHE_DIR, "pagefind.js")).href);
+  await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
+
+  // Simplified search wrapper
+  async function doSearch(query, limit = 20) {
   }
-);
-
-import z                  from "zod";
-import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { UriTemplate }   from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
-import * as pagefindLib   from "pagefind";
-
-// ------------------------------------------------------------
-// 1.  Build a tiny Pagefind index at start-up
-// ------------------------------------------------------------
-const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
-
-async function fetchPage(url) {               // fetch remote page
-  const agent = process.env.HTTPS_PROXY
-    ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
-    : undefined;
-  return new Promise((resolve, reject) => {
-    https
-      .get(url, { agent }, (res) => {
-        let data = "";
-        res.on("data", (c) => (data += c));
-        res.on("end", () => resolve(data));
-      })
-      .on("error", reject);
+  // ------------------------------------------------------------
+  // Minimal MCP facade
+  // ------------------------------------------------------------
+  const mcp = new McpServer({
+    name:    "smol-ai-news",
+    version: "0.1.0"
   });
+
+  // Serve article content
+  mcp.resource(
+    "news-article",
+    new ResourceTemplate("news://{file}", { list: undefined }),
+    async (_uri, { file }) => {
+      const html = await readFile(join(SAMPLE_DIR, file), "utf8");
+      return { contents: [{ uri: _uri.href, text: stripHtml(html) }] };
+    }
+  );
+  mcp.tool(
+    "search_smol_news",
+    { query: z.string(), limit: z.number().optional() },
+    async ({ query, limit }) => ({
+      structuredContent: await doSearch(query, limit ?? 20)
+    })
+  );
+  // ------------------------------------------------------------
+  // 4.  Tiny stdio transport
+  // ------------------------------------------------------------
+  const transport = new StdioServerTransport();
+  await mcp.connect(transport);
+  console.log("✓ MCP server ‘smol-ai-news’ ready on stdio");
 }
-
-const args = process.argv.slice(2);
-const noResources = args.includes("--no-resources");   // skip resource push
-
-async function buildIndex() {
-  await mkdir(CACHE_DIR, { recursive: true });
-  const slugs = [                        // issue pages to index
-    "25-06-03-not-much",
-    "25-06-02-not-much",
-    "25-05-30-mary-meeker",
-  ];
-
-  const { index } = await pagefindLib.createIndex();
-  for (const slug of slugs) {
-    const url = `https://news.smol.ai/issues/${slug}`;
-    const html = await fetchPage(url);
-    await index.addHTMLFile({ url, content: html, sourcePath: `issues/${slug}.html` });
-  }
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
   await index.writeFiles({ outputPath: CACHE_DIR });
 }
 await buildIndex();
