@@ -8,6 +8,7 @@ import { tmpdir }         from "os";
 import { join, dirname }  from "path";
 import { mkdir, writeFile, readFile } from "fs/promises";
 import { pathToFileURL } from "url";
+import { JSDOM }            from "jsdom";
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -57,6 +58,11 @@ global.fetch    = async (url) => {
 const pagefind = await import(pathToFileURL(join(CACHE_DIR, "pagefind.js")).href);
 await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
 
+// Convert HTML to text
+function stripHtml(html) {
+  return new JSDOM(html).window.document.body.textContent || "";
+}
+
 // Convenience wrapper
 async function doSearch(query, limit = 20) {
   let res = await pagefind.search(query);
@@ -75,8 +81,8 @@ async function doSearch(query, limit = 20) {
     hits: hits.map((h) => ({
       title: h.meta.title,
       url: `https://news.smol.ai${h.url}`,
-      excerpt: h.excerpt,
-      content: h.raw_content, // larger snippet text
+      excerpt: stripHtml(h.excerpt),
+      content: stripHtml(h.raw_content), // larger snippet text
     })),
   };
 }
