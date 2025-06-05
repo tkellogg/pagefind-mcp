@@ -8,6 +8,7 @@ import { tmpdir }         from "os";
 import { join }  from "path";
 import { mkdir, readFile } from "fs/promises";
 import https               from "node:https";
+import http                from "node:http";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { pathToFileURL } from "url";
 import { JSDOM }          from "jsdom";
@@ -23,12 +24,14 @@ import * as pagefindLib   from "pagefind";
 const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
 
 async function fetchPage(url) {               // fetch remote page
+  const parsed = new URL(url);
   const agent = process.env.HTTPS_PROXY
     ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
     : undefined;
+  const lib = parsed.protocol === "http:" ? http : https;
   return new Promise((resolve, reject) => {
-    https
-      .get(url, { agent }, (res) => {
+    lib
+      .get(parsed, { agent }, (res) => {
         let data = "";
         res.on("data", (c) => (data += c));
         res.on("end", () => resolve(data));
@@ -38,17 +41,30 @@ async function fetchPage(url) {               // fetch remote page
 }
 
 const args = process.argv.slice(2);
-const hostArg = args.find((a, i) => a.startsWith("--host=") || a === "--host" && args[i + 1]); // parse required host
-const hostVal = hostArg
-  ? hostArg.includes("=")
-    ? hostArg.split("=")[1]
-    : args[args.indexOf("--host") + 1]
-  : null;
+let hostVal = null;                   // extract --host argument
+for (let i = 0; i < args.length; i++) {
+  if (args[i].startsWith("--host=")) {
+    hostVal = args[i].split("=")[1];
+    break;
+  }
+  if (args[i] === "--host" && args[i + 1]) {
+    hostVal = args[i + 1];
+    break;
+  }
+}
 if (!hostVal) {
   console.error("Error: --host <url> required");
   process.exit(1);
 }
-const HOST = hostVal.replace(/\/$/, "");   // base site url
+if (!/^https?:\/\//.test(hostVal)) hostVal = `https://${hostVal}`; // default scheme
+let hostUrl;
+try {
+  hostUrl = new URL(hostVal);         // validate url format
+} catch {
+  console.error("Error: invalid --host value");
+  process.exit(1);
+}
+const HOST = hostUrl.href.replace(/\/$/, "");   // normalized base url
 const noResources = args.includes("--no-resources");   // skip resource push
 
 async function buildIndex() {
