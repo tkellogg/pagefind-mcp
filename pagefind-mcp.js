@@ -5,12 +5,16 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { join, dirname }  from "path";
-import { mkdir, writeFile, readFile } from "fs/promises";
+import { join }  from "path";
+import { mkdir, readFile } from "fs/promises";
+import https               from "node:https";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { pathToFileURL } from "url";
+import { JSDOM }          from "jsdom";
 import z                  from "zod";
 import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { UriTemplate }   from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
 import * as pagefindLib   from "pagefind";
 
 // ------------------------------------------------------------
@@ -18,23 +22,38 @@ import * as pagefindLib   from "pagefind";
 // ------------------------------------------------------------
 const CACHE_DIR = join(tmpdir(), "smol_ai_pagefind");
 
+async function fetchPage(url) {               // fetch remote page
+  const agent = process.env.HTTPS_PROXY
+    ? new HttpsProxyAgent(process.env.HTTPS_PROXY)
+    : undefined;
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, { agent }, (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => resolve(data));
+      })
+      .on("error", reject);
+  });
+}
+
+const args = process.argv.slice(2);
+const noResources = args.includes("--no-resources");   // skip resource push
+
 async function buildIndex() {
   await mkdir(CACHE_DIR, { recursive: true });
-  const sampleDir = join(tmpdir(), "smol_ai_sample");
-  await mkdir(sampleDir, { recursive: true });
-
-  const pages = [
-    { file: "index.html", title: "OpenAI launches new GPT model", body: "OpenAI's latest model improves reasoning and efficiency." },
-    { file: "anthropic.html", title: "Anthropic releases Claude 3", body: "Anthropic's Claude 3 sets new benchmarks in alignment." },
-    { file: "research.html", title: "Machine Learning breakthrough", body: "Researchers propose a new transformer variant." }
+  const slugs = [                        // issue pages to index
+    "25-06-03-not-much",
+    "25-06-02-not-much",
+    "25-05-30-mary-meeker",
   ];
 
-  await Promise.all(pages.map(p =>
-    writeFile(join(sampleDir, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
-  ));
-
   const { index } = await pagefindLib.createIndex();
-  await index.addDirectory({ path: sampleDir });
+  for (const slug of slugs) {
+    const url = `https://news.smol.ai/issues/${slug}`;
+    const html = await fetchPage(url);
+    await index.addHTMLFile({ url, content: html, sourcePath: `issues/${slug}.html` });
+  }
   await index.writeFiles({ outputPath: CACHE_DIR });
 }
 await buildIndex();
@@ -57,6 +76,8 @@ global.fetch    = async (url) => {
 const pagefind = await import(pathToFileURL(join(CACHE_DIR, "pagefind.js")).href);
 await pagefind.init({ path: CACHE_DIR });          // locate manifest & chunks
 
+const pushedUrls = new Set();           // cache resource urls
+
 // Convenience wrapper
 async function doSearch(query, limit = 20) {
   let res = await pagefind.search(query);
@@ -70,14 +91,31 @@ async function doSearch(query, limit = 20) {
   const hits = await Promise.all(
     res.results.slice(0, limit).map((r) => r.data())
   );
+  // pagefind result fields: url, content, word_count, filters, meta,
+  // anchors, weighted_locations, locations, raw_content, raw_url,
+  // excerpt, sub_results
+  const results = [];
+  for (const h of hits) {
+    const url = h.url.startsWith('http') ? h.url : `https://news.smol.ai${h.url}`;
+    let content = h.raw_content;
+    if (noResources) {
+      const html = await fetchPage(url);
+      const dom = new JSDOM(html);
+      const text = dom.window.document.body.textContent.trim().replace(/\s+/g, " ");
+      const excerptLen = h.excerpt.replace(/<[^>]+>/g, "").length;
+      content = text.slice(0, excerptLen);
+    } else if (!pushedUrls.has(url)) {
+      const html = await fetchPage(url);
+      mcp.resource(url, url, async () => ({
+        contents: [{ uri: url, mimeType: "text/html", text: html }],
+      }));
+      pushedUrls.add(url);
+    }
+    results.push({ title: h.meta.title, url, excerpt: h.excerpt, content });
+  }
   return {
     total: res.unfilteredResultCount,
-    hits: hits.map((h) => ({
-      title: h.meta.title,
-      url: `https://news.smol.ai${h.url}`,
-      excerpt: h.excerpt,
-      content: h.raw_content, // larger snippet text
-    })),
+    hits: results,
   };
 }
 
@@ -96,6 +134,18 @@ mcp.tool(
     structuredContent: await doSearch(query, limit ?? 20)
   })
 );
+
+// Single page template
+if (!noResources) {
+  mcp.resource(
+    "page",
+    new UriTemplate("https://news.smol.ai/{+path}"),
+    async (_uri) => {
+      const html = await fetchPage(_uri);
+      return { contents: [{ uri: _uri, mimeType: "text/html", text: html }] };
+    }
+  );
+}
 
 // ------------------------------------------------------------
 // 4.  Tiny stdio transport
