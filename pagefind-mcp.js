@@ -5,10 +5,15 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { McpServer, ResourceTemplate }      from "@modelcontextprotocol/sdk/server/mcp.js";
+import { mkdir, writeFile, readFile, access } from "fs/promises";
 // Build sample search index
 const SAMPLE_DIR = join(tmpdir(), "smol_ai_sample");
   await mkdir(SAMPLE_DIR, { recursive: true });
+  try {
+    await access(join(CACHE_DIR, 'pagefind.js'));
+    return;
+  } catch {}
+
     writeFile(join(SAMPLE_DIR, p.file), `<!doctype html><html><head><title>${p.title}</title></head><body><h1>${p.title}</h1><p>${p.body}</p></body></html>`)
   await index.addDirectory({ path: SAMPLE_DIR });
 // Pagefind browser shims
