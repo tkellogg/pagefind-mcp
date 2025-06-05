@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "An MCP server for searching static sites that are indexed with pagefind",
   "main": "pagefind-mcp.js",
+  "bin": {
+    "pagefind-mcp": "./pagefind-mcp.js"
+  },
   "scripts": {
     "test": "node --test"
   },
