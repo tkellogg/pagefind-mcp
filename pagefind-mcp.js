@@ -5,17 +5,18 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-// Determine tool name
-function cliToolName() {
+// Collect CLI tool name
+function parseToolName() {
   const argv = process.argv.slice(2);
+  let tool = "search_pagefind";
   for (const a of argv) {
-    if (a === '--tool-name') {
+    if (a === "--tool-name") {
       const pos = argv.indexOf(a);
-      return argv[pos + 1] ?? 'search_pagefind';
+      tool = argv[pos + 1] ?? tool;
     }
-    if (a.startsWith('--tool-name=')) return a.split('=')[1];
-  return 'search_pagefind';
-const TOOL_NAME = cliToolName();
+    if (a.startsWith("--tool-name=")) tool = a.split("=")[1];
+  return tool;
+const TOOL_NAME = parseToolName();
 // CLI switch for tool name
 const args = process.argv.slice(2);
 let TOOL_NAME = 'search_pagefind';
