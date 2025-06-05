@@ -5,18 +5,17 @@
 // Requires:  node >=18  (fetch + async import),  npm i node-fetch @modelcontextprotocol/sdk zod
 
 import { tmpdir }         from "os";
-import { join }  from "path";
-import { mkdir, readFile } from "fs/promises";
-import https               from "node:https";
-import { HttpsProxyAgent } from "https-proxy-agent";
-import { pathToFileURL } from "url";
-import { JSDOM }          from "jsdom";
-import z                  from "zod";
-import { McpServer }      from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { UriTemplate }   from "@modelcontextprotocol/sdk/shared/uriTemplate.js";
-import * as pagefindLib   from "pagefind";
-
+// Determine tool name
+function cliToolName() {
+  const argv = process.argv.slice(2);
+  for (const a of argv) {
+    if (a === '--tool-name') {
+      const pos = argv.indexOf(a);
+      return argv[pos + 1] ?? 'search_pagefind';
+    }
+    if (a.startsWith('--tool-name=')) return a.split('=')[1];
+  return 'search_pagefind';
+const TOOL_NAME = cliToolName();
 // CLI switch for tool name
 const args = process.argv.slice(2);
 let TOOL_NAME = 'search_pagefind';
